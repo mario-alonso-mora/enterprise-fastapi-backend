@@ -1,11 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_admin
 from app.db.session import get_db
+from app.modules.audit.service import record_event
 from app.modules.customers.models import Customer
 from app.modules.customers.repository import CustomerRepository
 from app.modules.customers.schemas import (
@@ -21,7 +22,10 @@ router = APIRouter(prefix="/customers", tags=["Customers"])
 
 @router.post("", response_model=CustomerRead, status_code=201)
 def create_customer(
-    payload: CustomerCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)
+    request: Request,
+    payload: CustomerCreate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     customer = Customer(
         organization_id=admin.organization_id,
@@ -31,6 +35,17 @@ def create_customer(
     )
     db.add(customer)
     try:
+        db.flush()
+        record_event(
+            db,
+            organization_id=admin.organization_id,
+            actor_id=admin.id,
+            action="customer.created",
+            entity_type="customer",
+            entity_id=customer.id,
+            changed_fields=["external_ref", "name", "email"],
+            request_id=request.state.request_id,
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -63,6 +78,7 @@ def get_customer(
 
 @router.patch("/{customer_id}", response_model=CustomerRead)
 def update_customer(
+    request: Request,
     customer_id: uuid.UUID,
     payload: CustomerUpdate,
     admin: User = Depends(require_admin),
@@ -76,6 +92,17 @@ def update_customer(
         raise HTTPException(status_code=422, detail="Name cannot be null")
     for field, value in changes.items():
         setattr(customer, field, str(value) if value is not None else None)
+    if changes:
+        record_event(
+            db,
+            organization_id=admin.organization_id,
+            actor_id=admin.id,
+            action="customer.updated",
+            entity_type="customer",
+            entity_id=customer.id,
+            changed_fields=sorted(changes),
+            request_id=request.state.request_id,
+        )
     db.commit()
     db.refresh(customer)
     return customer

@@ -23,3 +23,34 @@ Required follow-up:
 
 The issue must not be considered resolved solely because
 individual test suites pass.
+
+## Investigation update — 2026-10-08
+
+The intermittent 401 was reproduced and identified as
+`jwt.exceptions.ImmatureSignatureError`.
+
+Mitigations implemented:
+
+- Added a five-second JWT clock-skew tolerance.
+- Added regression tests for permitted clock skew, future-issued
+  tokens, expired tokens, and invalid signatures.
+- Restored Windows time synchronization using W32Time and NTP.
+- Confirmed Windows, WSL2, and Docker clock alignment.
+
+Validation:
+
+- SQLite: 200 passing tests across 10 complete runs.
+- PostgreSQL: 200 passing tests across 10 complete runs.
+- No unexpected 401 responses in this validation.
+
+Security note:
+
+The five-second leeway also extends expiration acceptance
+by up to five seconds.
+
+Remaining uncertainty:
+
+The direct JWT rejection reason was established, but the
+underlying cause of the intermittent clock discrepancy has
+not been conclusively proven. Continue monitoring and
+investigate if the rejection reappears.

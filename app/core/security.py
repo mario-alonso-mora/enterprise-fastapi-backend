@@ -71,6 +71,8 @@ def get_current_user(
             credentials.credentials,
             settings.jwt_secret_key.get_secret_value(),
             algorithms=["HS256"],
+            # Tolerate up to five seconds of clock skew.
+            leeway=timedelta(seconds=5),
             audience=settings.jwt_audience,
             issuer=settings.jwt_issuer,
             options={"require": ["sub", "exp", "iat", "aud", "iss"]},

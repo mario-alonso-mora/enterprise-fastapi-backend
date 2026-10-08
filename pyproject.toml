@@ -1,6 +1,6 @@
 [project]
 name = "enterprise-fastapi-starter"
-version = "0.1.0"
+version = "0.3.0"
 description = "Modular multi-tenant REST API with FastAPI, PostgreSQL and RBAC"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -13,11 +13,12 @@ dependencies = [
     "pydantic-settings>=2.7,<3",
     "email-validator>=2.2,<3",
     "PyJWT>=2.10,<3",
+    "redis>=5.2,<7",
     "argon2-cffi>=23,<26",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3,<10", "httpx>=0.28,<1", "ruff>=0.9,<1", "pytest-cov>=6,<8"]
+dev = ["pytest>=8.3,<10", "httpx>=0.28,<1", "ruff>=0.9,<1", "pytest-cov>=6,<8", "fakeredis[lua]>=2.26,<3"]
 
 [build-system]
 requires = ["hatchling>=1.26"]

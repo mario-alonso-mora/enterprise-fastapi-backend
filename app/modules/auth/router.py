@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.core.rate_limit import limit_login, limit_register
 from app.core.security import create_access_token, require_bootstrap_key
 from app.db.session import get_db
 from app.modules.auth.schemas import (
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     "/register",
     response_model=RegistrationResult,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_bootstrap_key)],
+    dependencies=[Depends(limit_register), Depends(require_bootstrap_key)],
 )
 def register_organization(payload: RegisterOrganization, db: Session = Depends(get_db)):
     try:
@@ -33,7 +34,7 @@ def register_organization(payload: RegisterOrganization, db: Session = Depends(g
     )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, dependencies=[Depends(limit_login)])
 def login(
     payload: LoginRequest, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
 ):

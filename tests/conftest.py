@@ -5,6 +5,7 @@ os.environ["JWT_SECRET_KEY"] = "test-only-jwt-secret-with-at-least-32-characters
 os.environ["BOOTSTRAP_KEY"] = "test-only-bootstrap-key-with-at-least-32-characters-12345"
 
 import pytest  # noqa: E402
+from fakeredis import FakeRedis  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
@@ -12,6 +13,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 
 import app.db.models  # noqa: E402,F401
 from app.core.config import get_settings  # noqa: E402
+from app.core.rate_limit import get_redis  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -36,12 +38,15 @@ def client():
         with Session(engine) as session:
             yield session
 
+    fake_redis = FakeRedis(decode_responses=True)
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_redis] = lambda: fake_redis
     try:
         with TestClient(app) as c:
             yield c
     finally:
         app.dependency_overrides.clear()
+        fake_redis.close()
         Base.metadata.drop_all(engine)
         engine.dispose()
 

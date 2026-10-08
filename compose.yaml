@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [internal]
+
   db:
     image: postgres:17-alpine
     environment:
@@ -24,8 +34,13 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY}
       BOOTSTRAP_KEY: ${BOOTSTRAP_KEY:?Set BOOTSTRAP_KEY}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_LOGIN_PER_MINUTE: ${RATE_LIMIT_LOGIN_PER_MINUTE:-5}
+      RATE_LIMIT_REGISTER_PER_MINUTE: ${RATE_LIMIT_REGISTER_PER_MINUTE:-3}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks: [internal]
 

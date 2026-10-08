@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title=get_settings().app_name, version="0.1.0")
+    app = FastAPI(title=get_settings().app_name, version="0.3.0")
 
     @app.middleware("http")
     async def request_log(request: Request, call_next):

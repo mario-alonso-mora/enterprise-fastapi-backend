@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     jwt_issuer: str = "enterprise-fastapi"
     jwt_audience: str = "enterprise-fastapi-api"
     access_token_minutes: int = 30
+    redis_url: str = "redis://localhost:6379/0"
+    rate_limit_login_per_minute: int = Field(default=5, ge=1)
+    rate_limit_register_per_minute: int = Field(default=3, ge=1)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

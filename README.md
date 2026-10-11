@@ -6,12 +6,12 @@ Enterprise FastAPI Backend implements the foundations of a B2B platform: organiz
 
 The design prioritizes clear authorization boundaries, data integrity and reproducible development workflows.
 
-> **Status: v0.1.0.** Functional local implementation; **not production-hardened**. Review [Security](docs/SECURITY.md) before exposing the API to the internet.
+> **Status: v0.4.0.** Locally validated implementation; **not production-hardened**. Review [Security](docs/SECURITY.md) before exposing the API to the internet.
 
 ## Engineering highlights
 
 - **Tenant isolation:** customer queries use the organization resolved from the authenticated user, not a client-provided organization ID.
-- **Authentication:** Argon2id password hashing and expiring JWT bearer tokens.
+- **Authentication:** Argon2id, JWT access tokens, persistent sessions, hashed rotating refresh tokens, replay detection and logout.
 - **Authorization:** `admin` and `member` roles. Members can read customers; only admins can modify them.
 - **Persistence:** PostgreSQL 17, SQLAlchemy 2 and Alembic migrations; database constraints protect integrity.
 - **API design:** Pydantic schemas, versioned routes, pagination and OpenAPI/Swagger UI.
@@ -59,7 +59,7 @@ cp .env.example .env
 # Edit .env: change the database password and generate distinct JWT and bootstrap keys.
 python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
 docker compose build
-docker compose up -d db
+docker compose up -d --wait db redis
 docker compose run --rm migrate
 docker compose up -d api
 ```
@@ -76,7 +76,7 @@ docker compose exec -T api alembic current
 
 - Swagger UI: http://localhost:8000/docs
 - OpenAPI: http://localhost:8000/openapi.json
-- Initial Alembic revision: `0001 (head)`
+- Current Alembic head: `0003` (authentication sessions and refresh tokens)
 
 ## API endpoints
 
@@ -84,7 +84,9 @@ docker compose exec -T api alembic current
 | --- | --- | --- |
 | GET | `/health/live`, `/health/ready` | Public (restrict exposure) |
 | POST | `/api/v1/auth/register` | Bootstrap key |
-| POST | `/api/v1/auth/login` | Public |
+| POST | `/api/v1/auth/login` | Public, rate limited |
+| POST | `/api/v1/auth/refresh` | Refresh token, rate limited |
+| POST | `/api/v1/auth/logout` | Access JWT with `sid` |
 | GET | `/api/v1/users/me` | Authenticated |
 | GET, POST | `/api/v1/users` | Organization admin |
 | GET | `/api/v1/customers` | Own organization |
@@ -102,10 +104,10 @@ The following results were observed **locally** in Docker, not in a public deplo
 | --- | --- |
 | FastAPI + PostgreSQL 17 startup | Passed |
 | Liveness / readiness | HTTP 200 / HTTP 200 |
-| Alembic revision | `0001 (head)` |
-| pytest with SQLite | 11 passed |
-| pytest with PostgreSQL | 11 passed |
-| HTTP end-to-end checks | 13 passed (JWT, tenant isolation, RBAC) |
+| Alembic migration `0003` | Validated against isolated PostgreSQL |
+| Full local pytest suite | 50 passed (SQLite, Redis and PostgreSQL integration) |
+| PostgreSQL concurrency and row locking | Passed |
+| HTTP authentication checks | Login, refresh, logout, replay detection and rate limiting passed |
 | Ruff lint / formatting | Passed |
 
 **Integration tests can drop and recreate tables.** Always use a dedicated disposable test database, never the development or production database.
@@ -117,11 +119,27 @@ GitHub Actions is configured in [CI](.github/workflows/ci.yml); its results must
 ## Known limitations and roadmap
 
 - No PostgreSQL Row-Level Security: tenant filtering currently operates in the application.
-- No login rate limiting or token refresh/revocation yet.
-- No managed TLS, centralized secrets, domain audit trail or complete monitoring.
+- Logout revokes refresh credentials immediately, but existing access JWTs remain valid until expiry (30 minutes by default).
+- Production deployment still requires managed TLS, trusted-proxy configuration, centralized secrets, session cleanup and complete monitoring.
 - Future work: authentication hardening, audit events, observability, stronger tenant boundaries, dependency scanning and deployment runbooks.
 
 These limitations are tracked in [Security](docs/SECURITY.md).
+
+## Authentication sessions (v0.4.0)
+
+- Login creates a persistent session and returns an access JWT and a refresh token.
+- Access JWTs expire after 30 minutes by default; the `sid` claim identifies the session.
+- Refresh tokens are stored only as SHA-256 hashes in PostgreSQL.
+- Sessions expire after 14 days, without extending their original expiry on refresh.
+- Each successful refresh rotates the refresh token. Reusing an already consumed token revokes the entire session.
+- Logout revokes the current session's refresh credentials. Other sessions remain independent.
+- Legacy access JWTs without `sid` remain accepted by existing protected endpoints, but cannot be used for session logout.
+- Login, registration and refresh use separate Redis rate limits of 5, 3 and 10 requests per minute per client IP, respectively.
+- Token-bearing responses include `Cache-Control: no-store` and `Pragma: no-cache`.
+- Clients must serialize refresh operations to avoid accidental reuse detection.
+- Apply Alembic revision `0003` before enabling the new authentication endpoints on an existing database.
+
+For internet-facing deployment, configure trusted proxies, TLS, secrets, monitoring and expired-session cleanup. Redis unavailability causes protected authentication requests to fail closed.
 
 ## Documentation and license
 

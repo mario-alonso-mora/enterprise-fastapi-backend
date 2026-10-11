@@ -119,3 +119,16 @@ def limit_register(
         "register",
         settings.rate_limit_register_per_minute,
     )
+
+
+def limit_refresh(
+    request: Request,
+    store: Redis = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    enforce_limit(
+        request,
+        store,
+        "refresh",
+        settings.rate_limit_refresh_per_minute,
+    )

@@ -12,7 +12,7 @@ curl -fsS http://localhost:8000/health/live
 curl -fsS http://localhost:8000/health/ready
 ```
 
-## Ruff and SQLite tests
+## Local Ruff and SQLite tests
 
 ```bash
 docker compose run --rm --no-deps --user root \
@@ -24,13 +24,29 @@ docker compose run --rm --no-deps --user root \
   '
 ```
 
-## PostgreSQL tests
+## PostgreSQL and Redis integration tests
 
-**Warning:** pytest fixtures drop and recreate application tables. Use a dedicated disposable database called `enterprise_test` — never the main `enterprise` database.
+The standard pytest client fixture uses in-memory SQLite
+when `TEST_DATABASE_URL` is not configured.
 
-Create that database once if necessary. Then set `TEST_DATABASE_URL` to its connection URL when running pytest.
+When `TEST_DATABASE_URL` is configured, the fixture drops
+and recreates tables. Never point it at the development
+database `enterprise` or any production database.
 
-See the test fixtures in `tests/conftest.py` for exact database lifecycle behavior. Run the same tests against the dedicated PostgreSQL database before merging significant persistence changes.
+The authentication concurrency tests use a different
+variable: `AUTH_TEST_ADMIN_DATABASE_URL`.
+
+These tests create an isolated temporary PostgreSQL database,
+run the concurrency checks and delete that database.
+The database user must have permission to create databases.
+
+Real Redis integration tests use `TEST_REDIS_URL`.
+
+The full local suite was validated with SQLite,
+real Redis and isolated PostgreSQL concurrency tests.
+
+GitHub Actions uses dedicated PostgreSQL and Redis services
+to reproduce the integration checks.
 
 ## Migrations and rebuilds
 

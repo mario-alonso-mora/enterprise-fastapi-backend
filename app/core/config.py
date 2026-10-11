@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     rate_limit_login_per_minute: int = Field(default=5, ge=1)
     rate_limit_register_per_minute: int = Field(default=3, ge=1)
+    rate_limit_refresh_per_minute: int = Field(default=10, ge=1)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

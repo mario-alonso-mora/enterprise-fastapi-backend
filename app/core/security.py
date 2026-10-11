@@ -29,7 +29,11 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(user_id: uuid.UUID, settings: Settings) -> str:
+def create_access_token(
+    user_id: uuid.UUID,
+    settings: Settings,
+    session_id: uuid.UUID | None = None,
+) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
@@ -39,6 +43,9 @@ def create_access_token(user_id: uuid.UUID, settings: Settings) -> str:
         "aud": settings.jwt_audience,
         "typ": "access",
     }
+    if session_id is not None:
+        payload["sid"] = str(session_id)
+
     return jwt.encode(payload, settings.jwt_secret_key.get_secret_value(), algorithm="HS256")
 
 
@@ -92,3 +99,42 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin role required")
     return current_user
+
+
+def get_current_session_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> uuid.UUID:
+    """Resolve a verified access JWT to its session identifier.
+
+    Legacy access JWTs without sid remain valid for existing endpoints,
+    but cannot be used to revoke a specific session.
+    """
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise unauthenticated()
+
+    try:
+        claims = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret_key.get_secret_value(),
+            algorithms=["HS256"],
+            leeway=timedelta(seconds=5),
+            audience=settings.jwt_audience,
+            issuer=settings.jwt_issuer,
+            options={"require": ["sub", "exp", "iat", "aud", "iss"]},
+        )
+
+        sid = claims.get("sid")
+
+        if (
+            claims.get("typ") != "access"
+            or claims.get("sub") != str(current_user.id)
+            or not isinstance(sid, str)
+        ):
+            raise unauthenticated()
+
+        return uuid.UUID(sid)
+
+    except (InvalidTokenError, ValueError, TypeError) as exc:
+        raise unauthenticated() from exc

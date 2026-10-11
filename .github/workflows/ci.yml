@@ -35,6 +35,7 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://app:test-password@localhost:5432/enterprise_test
       REDIS_URL: redis://localhost:6379/0
       TEST_REDIS_URL: redis://localhost:6379/0
+      AUTH_TEST_ADMIN_DATABASE_URL: postgresql+psycopg://app:test-password@localhost:5432/enterprise_test
       JWT_SECRET_KEY: ci-only-this-secret-is-not-used-for-production-123456
       BOOTSTRAP_KEY: ci-only-bootstrap-key-not-used-in-production-12345
     steps:

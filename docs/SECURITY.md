@@ -62,6 +62,32 @@ detection and revoke that session.
 Expired session and refresh-token record cleanup still requires
 an operational retention policy and maintenance procedure.
 
+## Monitoring security (v0.6.0)
+
+The monitoring endpoint `/internal/metrics` uses a dedicated
+Bearer credential configured through `METRICS_SCRAPE_TOKEN`.
+
+This credential is independent of organization-user sessions
+and tenant administrator permissions.
+
+Security properties:
+
+- Monitoring disabled when no credential is configured.
+- Missing or invalid monitoring credentials rejected.
+- Constant-time comparison of monitoring credentials.
+- No user identifiers or query parameters in metrics labels.
+- HTTP errors expose request IDs rather than exception details.
+
+Production requirements:
+
+- Restrict monitoring access to trusted infrastructure.
+- Use TLS for monitoring traffic.
+- Manage and rotate the monitoring secret securely.
+- Configure metrics aggregation for multi-worker deployments.
+
+For additional details, see
+[Observability and operational security](OBSERVABILITY_v0.6.0.md).
+
 ## Known risks and production requirements
 
 - Tenant separation is application-level; PostgreSQL Row-Level

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     jwt_audience: str = "enterprise-fastapi-api"
     access_token_minutes: int = 30
     redis_url: str = "redis://localhost:6379/0"
+    metrics_scrape_token: SecretStr | None = None
     rate_limit_login_per_minute: int = Field(default=5, ge=1)
     rate_limit_register_per_minute: int = Field(default=3, ge=1)
     rate_limit_refresh_per_minute: int = Field(default=10, ge=1)
@@ -27,6 +28,9 @@ class Settings(BaseSettings):
                 val = getattr(self, name).get_secret_value()
                 if len(val) < 32 or "dev-only" in val or "replace" in val:
                     raise ValueError(f"{name} must be securely configured in production")
+        if self.metrics_scrape_token is not None:
+            if len(self.metrics_scrape_token.get_secret_value()) < 32:
+                raise ValueError("metrics_scrape_token must contain at least 32 characters")
         return self
 
 

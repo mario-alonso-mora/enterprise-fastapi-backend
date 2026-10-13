@@ -1,6 +1,6 @@
 # Security model
 
-**Scope:** v0.4.0, locally validated. This document is not a
+**Scope:** v0.5.0 development branch, locally tested. This document is not a
 security certification or production deployment approval.
 
 ## Implemented controls
@@ -20,8 +20,10 @@ security certification or production deployment approval.
 - Every refresh rotates the token. Reuse of a consumed token
   revokes its session.
 - PostgreSQL row locks serialize refresh-token rotations.
-- Logout revokes refresh credentials for the current session,
-  without affecting independent sessions.
+- Every protected request validates its JWT against the persistent
+  session in PostgreSQL, including user ownership, expiration and revocation.
+- Logout immediately invalidates subsequent authenticated requests
+  using that session, without affecting independent sessions.
 - Redis enforces independent per-IP limits: login 5/minute,
   registration 3/minute and refresh 10/minute by default.
 - Protected rate-limited authentication endpoints fail closed
@@ -33,16 +35,25 @@ security certification or production deployment approval.
 
 ## Session lifecycle and limitations
 
-An access JWT includes the session identifier (`sid`) when issued
-through the session-based login or refresh flow.
+All protected endpoints require a valid access JWT containing a `sid`
+claim identifying an active persistent authentication session.
 
-Logout immediately prevents further refreshes for the revoked
-session. Previously issued access JWTs remain valid until their
-normal expiration, 30 minutes by default. Immediate revocation
-of those access JWTs is not implemented.
+The session must exist, belong to the JWT subject, not be revoked and
+not have expired. The user must also exist and remain active.
 
-Legacy access JWTs without `sid` remain usable on existing protected
-routes while valid, but cannot identify a session for logout.
+Logout revokes the current session. Both refresh tokens and access JWTs
+associated with that session are rejected on subsequent authenticated
+requests. Requests already in progress are not forcibly cancelled.
+
+A repeated logout using the same revoked access JWT returns HTTP 401.
+
+Legacy access JWTs without `sid` are rejected on all protected routes.
+Clients using these tokens must authenticate again after upgrading
+to v0.5.0. This is an intentional breaking authentication change.
+
+Each authenticated request requires a session lookup in PostgreSQL.
+Database availability and query performance therefore directly affect
+authenticated request processing.
 
 Clients must serialize refresh requests for each session.
 Concurrent use of the same refresh token can trigger reuse

@@ -22,6 +22,24 @@ def make_claims(user_id, issued_offset, expiry_offset):
     }
 
 
+def active_session_id(client, email):
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "StrongPassword-12345"},
+    )
+    assert response.status_code == 200
+
+    settings = get_settings()
+    claims = jwt.decode(
+        response.json()["access_token"],
+        settings.jwt_secret_key.get_secret_value(),
+        algorithms=["HS256"],
+        issuer=settings.jwt_issuer,
+        audience=settings.jwt_audience,
+    )
+    return claims["sid"]
+
+
 @pytest.mark.parametrize(
     ("issued_offset", "expiry_offset", "expected"),
     [
@@ -52,6 +70,8 @@ def test_jwt_clock_skew_and_expiry(
         expiry_offset,
     )
 
+    claims["sid"] = active_session_id(client, "owner@acme.example.com")
+
     token = jwt.encode(
         claims,
         settings.jwt_secret_key.get_secret_value(),
@@ -75,6 +95,8 @@ def test_jwt_invalid_signature_still_rejected(client, register):
         0,
         180,
     )
+
+    claims["sid"] = active_session_id(client, "owner@acme.example.com")
 
     token = jwt.encode(
         claims,

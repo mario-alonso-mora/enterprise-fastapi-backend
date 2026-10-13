@@ -1,5 +1,6 @@
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.modules.auth.models import AuthSession
 from app.modules.users.models import User
 
 ph = PasswordHasher()
@@ -66,33 +68,73 @@ def unauthenticated() -> HTTPException:
     )
 
 
-def get_current_user(
+@dataclass(frozen=True)
+class AuthenticatedSession:
+    user: User
+    session_id: uuid.UUID
+
+
+def get_authenticated_session(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
-) -> User:
+) -> AuthenticatedSession:
+    """Validate the access JWT and its persistent database session."""
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise unauthenticated()
+
     try:
         claims = jwt.decode(
             credentials.credentials,
             settings.jwt_secret_key.get_secret_value(),
             algorithms=["HS256"],
-            # Tolerate up to five seconds of clock skew.
             leeway=timedelta(seconds=5),
             audience=settings.jwt_audience,
             issuer=settings.jwt_issuer,
             options={"require": ["sub", "exp", "iat", "aud", "iss"]},
         )
-        if claims.get("typ") != "access":
+
+        subject = claims.get("sub")
+        sid = claims.get("sid")
+
+        if (
+            claims.get("typ") != "access"
+            or not isinstance(subject, str)
+            or not isinstance(sid, str)
+        ):
             raise unauthenticated()
-        user_id = uuid.UUID(claims["sub"])
-    except (InvalidTokenError, ValueError, KeyError) as exc:
+
+        user_id = uuid.UUID(subject)
+        session_id = uuid.UUID(sid)
+
+    except (InvalidTokenError, ValueError, TypeError) as exc:
         raise unauthenticated() from exc
+
     user = db.get(User, user_id)
+
     if user is None or not user.is_active:
         raise unauthenticated()
-    return user
+
+    session = db.get(AuthSession, session_id)
+
+    if session is None or session.user_id != user.id or session.revoked_at is not None:
+        raise unauthenticated()
+
+    expires_at = session.expires_at
+
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+
+    if expires_at <= datetime.now(UTC):
+        raise unauthenticated()
+
+    return AuthenticatedSession(user=user, session_id=session_id)
+
+
+def get_current_user(
+    authentication: AuthenticatedSession = Depends(get_authenticated_session),
+) -> User:
+    return authentication.user
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
@@ -102,39 +144,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 
 def get_current_session_id(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    current_user: User = Depends(get_current_user),
-    settings: Settings = Depends(get_settings),
+    authentication: AuthenticatedSession = Depends(get_authenticated_session),
 ) -> uuid.UUID:
-    """Resolve a verified access JWT to its session identifier.
-
-    Legacy access JWTs without sid remain valid for existing endpoints,
-    but cannot be used to revoke a specific session.
-    """
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise unauthenticated()
-
-    try:
-        claims = jwt.decode(
-            credentials.credentials,
-            settings.jwt_secret_key.get_secret_value(),
-            algorithms=["HS256"],
-            leeway=timedelta(seconds=5),
-            audience=settings.jwt_audience,
-            issuer=settings.jwt_issuer,
-            options={"require": ["sub", "exp", "iat", "aud", "iss"]},
-        )
-
-        sid = claims.get("sid")
-
-        if (
-            claims.get("typ") != "access"
-            or claims.get("sub") != str(current_user.id)
-            or not isinstance(sid, str)
-        ):
-            raise unauthenticated()
-
-        return uuid.UUID(sid)
-
-    except (InvalidTokenError, ValueError, TypeError) as exc:
-        raise unauthenticated() from exc
+    """Return the verified, active session identifier."""
+    return authentication.session_id

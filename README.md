@@ -6,7 +6,7 @@ Enterprise FastAPI Backend implements the foundations of a B2B platform: organiz
 
 The design prioritizes clear authorization boundaries, data integrity and reproducible development workflows.
 
-> **Status: v0.4.0.** Locally validated implementation; **not production-hardened**. Review [Security](docs/SECURITY.md) before exposing the API to the internet.
+> **Status: v0.5.0 (development).** v0.4.0 is the latest tagged release; **not production-hardened**. Review [Security](docs/SECURITY.md) before exposing the API to the internet.
 
 ## Engineering highlights
 
@@ -119,21 +119,22 @@ GitHub Actions is configured in [CI](.github/workflows/ci.yml); its results must
 ## Known limitations and roadmap
 
 - No PostgreSQL Row-Level Security: tenant filtering currently operates in the application.
-- Logout revokes refresh credentials immediately, but existing access JWTs remain valid until expiry (30 minutes by default).
+- Logout immediately invalidates access JWTs and refresh credentials for the revoked session on subsequent authenticated requests.
 - Production deployment still requires managed TLS, trusted-proxy configuration, centralized secrets, session cleanup and complete monitoring.
-- Future work: authentication hardening, audit events, observability, stronger tenant boundaries, dependency scanning and deployment runbooks.
+- Future work: session retention and cleanup, observability, stronger tenant boundaries, dependency scanning and deployment runbooks.
 
 These limitations are tracked in [Security](docs/SECURITY.md).
 
-## Authentication sessions (v0.4.0)
+## Authentication sessions (v0.5.0 development)
 
 - Login creates a persistent session and returns an access JWT and a refresh token.
 - Access JWTs expire after 30 minutes by default; the `sid` claim identifies the session.
 - Refresh tokens are stored only as SHA-256 hashes in PostgreSQL.
 - Sessions expire after 14 days, without extending their original expiry on refresh.
 - Each successful refresh rotates the refresh token. Reusing an already consumed token revokes the entire session.
-- Logout revokes the current session's refresh credentials. Other sessions remain independent.
-- Legacy access JWTs without `sid` remain accepted by existing protected endpoints, but cannot be used for session logout.
+- Logout revokes the current session, immediately denying subsequent access using its JWT. Independent sessions remain active.
+- Repeating logout with the revoked access JWT returns HTTP 401.
+- Legacy access JWTs without `sid` are rejected with HTTP 401. Clients must authenticate again after upgrading.
 - Login, registration and refresh use separate Redis rate limits of 5, 3 and 10 requests per minute per client IP, respectively.
 - Token-bearing responses include `Cache-Control: no-store` and `Pragma: no-cache`.
 - Clients must serialize refresh operations to avoid accidental reuse detection.

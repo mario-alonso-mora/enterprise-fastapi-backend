@@ -2,8 +2,6 @@
 
 from importlib import import_module
 
-import pytest
-
 
 def inject_audit_failure(monkeypatch):
     """Flush business and audit writes, then force a failure."""
@@ -29,15 +27,21 @@ def test_customer_creation_rolls_back_with_audit_failure(client, register, login
     admin = login("owner@acme.example.com")
     inject_audit_failure(monkeypatch)
 
-    with pytest.raises(RuntimeError, match="forced audit transaction failure"):
-        client.post(
-            "/api/v1/customers",
-            json={
-                "external_ref": "ROLLBACK-001",
-                "name": "Must not persist",
-            },
-            headers=admin,
-        )
+    failed = client.post(
+        "/api/v1/customers",
+        json={
+            "external_ref": "ROLLBACK-001",
+            "name": "Must not persist",
+        },
+        headers=admin,
+    )
+
+    assert failed.status_code == 500
+    assert failed.json() == {
+        "detail": "Internal server error",
+        "request_id": failed.headers["X-Request-ID"],
+    }
+    assert "forced audit transaction failure" not in failed.text
 
     customers = client.get("/api/v1/customers", headers=admin)
     assert customers.status_code == 200
@@ -68,12 +72,18 @@ def test_customer_update_rolls_back_with_audit_failure(client, register, login, 
 
     inject_audit_failure(monkeypatch)
 
-    with pytest.raises(RuntimeError, match="forced audit transaction failure"):
-        client.patch(
-            f"/api/v1/customers/{customer_id}",
-            json={"name": "Must not persist"},
-            headers=admin,
-        )
+    failed = client.patch(
+        f"/api/v1/customers/{customer_id}",
+        json={"name": "Must not persist"},
+        headers=admin,
+    )
+
+    assert failed.status_code == 500
+    assert failed.json() == {
+        "detail": "Internal server error",
+        "request_id": failed.headers["X-Request-ID"],
+    }
+    assert "forced audit transaction failure" not in failed.text
 
     customer = client.get(
         f"/api/v1/customers/{customer_id}",

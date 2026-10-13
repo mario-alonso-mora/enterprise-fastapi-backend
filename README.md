@@ -125,7 +125,7 @@ GitHub Actions is configured in [CI](.github/workflows/ci.yml); its results must
 
 These limitations are tracked in [Security](docs/SECURITY.md).
 
-## Authentication sessions (v0.5.0 development)
+## Authentication sessions (v0.5.0)
 
 - Login creates a persistent session and returns an access JWT and a refresh token.
 - Access JWTs expire after 30 minutes by default; the `sid` claim identifies the session.
@@ -141,6 +141,32 @@ These limitations are tracked in [Security](docs/SECURITY.md).
 - Apply Alembic revision `0003` before enabling the new authentication endpoints on an existing database.
 
 For internet-facing deployment, configure trusted proxies, TLS, secrets, monitoring and expired-session cleanup. Redis unavailability causes protected authentication requests to fail closed.
+
+## Observability (v0.6.0)
+
+Version 0.6.0 introduces:
+
+- Structured HTTP request logs with UTC timestamps.
+- Request correlation using `X-Request-ID`.
+- Safe HTTP 500 responses without internal exception details.
+- Prometheus counters and latency histograms.
+- Bounded HTTP method and route labels.
+- Dedicated authentication for monitoring infrastructure.
+
+The metrics endpoint is `/internal/metrics`.
+
+It is disabled unless `METRICS_SCRAPE_TOKEN` is configured
+with a secret containing at least 32 characters.
+
+Organization administrators cannot access global metrics
+using their application JWTs.
+
+Metrics are currently process-local. Multi-worker aggregation,
+external monitoring and production network restrictions remain
+deployment responsibilities.
+
+See [Observability and operational security](docs/OBSERVABILITY_v0.6.0.md)
+for implementation details, limitations and validation evidence.
 
 ## Documentation and license
 
